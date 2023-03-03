@@ -4,7 +4,11 @@
 #include "MotorControlBase.h"
 #include "accelerators/LinStepAccelerator.h"
 
-typedef MotorControlBase_Init_TypeDef StepControl_Init_TypeDef;
+
+typedef struct {
+    MotorControlBase_Init_TypeDef motorConfig;
+    TimerField_InitTypeDef timerConfig;
+}StepControl_Init_TypeDef;
 
 typedef struct {
     MotorControlBase controller;

@@ -1,23 +1,34 @@
 
 #include "MotorControlBase.h"
 
-static ErrFunc errFunc = NULL;
+// static ErrFunc errFunc = NULL;
 
 MotorControlBase* Controller_init(MotorControlBase* controller, const MotorControlBase_Init_TypeDef *config){
+#if defined (HAL_TIMER) &&HAL_TIMER
 
+    controller->timerField.pulseTimer.setPeriod(config->pulseWidth);
+    controller->timerField.accTimer.setPeriod(config->accUpdatePeriod);
+#else
     TimerField_setPulseWidth(&controller->timerField, config->pulseWidth);
     TimerField_setAccUpdatePeriod(&controller->timerField, config->accUpdatePeriod);
-    
+#endif
     controller->reachedTargetCallback = config->reachedTargetCallback;
+    controller->errorCallback = config->errorCallback;
     controller->accUpdatePeriod = config->accUpdatePeriod;
     controller->pulseWidth = config->pulseWidth;
     controller->mCnt = 0;
-
+    controller->leadMotor = NULL;
+    controller->changeDir = 0;
+    controller->lastPulse = 0;
     return controller;
 }
 
 int32_t Controller_getCurrentSpeed(const MotorControlBase *controller){
+#if defined (HAL_TIMER) && HAL_TIMER
+    return controller->timerField.stepTimer.frequency();
+#else
     return TimerField_getStepFrequency(&controller->timerField);
+#endif
 }
 
 
@@ -55,19 +66,20 @@ void vvController_attachStepper(MotorControlBase *controller, uint8_t N, __built
     controller->motorList[N] = NULL;
 }
 
-void attachErrorFunction(ErrFunc ef){
-    errFunc = ef;
-}
+// void attachErrorFunction(ErrFunc ef){
+//     errFunc = ef;
+// }
 
-void Error(ErrCode e){
-    if (errFunc != NULL) errFunc(e);
-}
+// void Error(ErrCode e){
+//     if (errFunc != NULL) errFunc(e);
+// }
 
 void FUN_IN_RAM stepTimerISR(MotorControlBase *controller){
+
+    if(controller->leadMotor == NULL) return;
     
     if(Stepper_isClearStepPin(controller->leadMotor) == false) return;
     Stepper_doStep(controller->leadMotor);  /// leadMotor=MotorList[0]
-
     Stepper* *slave = controller->motorList;
     
     // move slave motors if required (https://en.wikipedia.org/wiki/Bresenham)
@@ -78,69 +90,71 @@ void FUN_IN_RAM stepTimerISR(MotorControlBase *controller){
         }
         (*slave)->B += (*slave)->A;
     }
-
+    
+    controller->timerField.pulseTimer.setStatus(1);
+#if(ALLOCAT_PULSE_TIMER)
     TimerField_triggerDelay(&controller->timerField);  // start delay line to dactivate all step pins
-
-    // 正向限位
-    if((controller->mode == MOTOR_TARGET) && 
-        controller->leadMotor->targetPosLimit &&
-        (controller->leadMotor->current == controller->leadMotor->targetPosLimit))
-    {
-        TimerField_stepTimerStop(&controller->timerField);
-        TimerField_timerEndAfterPulse(&controller->timerField);
-        return;
-        // goto limit_end_section;
-    }
-    // 反向限位
-    if((controller->mode == MOTOR_TARGET) && 
-        controller->leadMotor->targetNegLimit &&
-        (controller->leadMotor->current == controller->leadMotor->targetNegLimit))
-    {
-        TimerField_stepTimerStop(&controller->timerField);
-        TimerField_timerEndAfterPulse(&controller->timerField);
-        return;
-        // goto limit_end_section;
-    }
+#endif
     // stop timer and call callback if we reached MOTOR_TARGET
     if((controller->mode == MOTOR_TARGET) && 
        (controller->leadMotor->current == controller->leadMotor->target)){
+#if(ALLOCAT_PULSE_TIMER)
         TimerField_stepTimerStop(&controller->timerField);
-        TimerField_timerEndAfterPulse(&controller->timerField);
-        if(!controller->reachedTargetCallback) return;
-        controller->reachedTargetCallback((int32_t)controller->leadMotor->current);
-        // goto reached_end_section;
+#endif
+#if defined (HAL_TIMER) && HAL_TIMER
+        controller->lastPulse = 1;
+        controller->timerField.accTimer.setStatus(0);
+#else
+        // TimerField_timerEndAfterPulse(&controller->timerField);
+        controller->lastPulse = 1;
+        TimerField_accTimerStop(&controller->timerField);
+#endif
+        // printf("motor will stop\n");
+        // if(!controller->reachedTargetCallback) return;
+        // controller->reachedTargetCallback((int32_t)controller->leadMotor->current);
     }
-    // return;
-    // limit_end_section:
-    //     TimerField_stepTimerStop(&controller->timerField);
-    //     TimerField_timerEndAfterPulse(&controller->timerField);
-    //     return;
-    // reached_end_section:
-    //     TimerField_stepTimerStop(&controller->timerField);
-    //     TimerField_timerEndAfterPulse(&controller->timerField);
-    //     if(controller->reachedTargetCallback)
-    //         controller->reachedTargetCallback((int32_t)controller->leadMotor->current);       
-    //     return;
 }
 
 
 void FUN_IN_RAM pulseTimerISR(MotorControlBase *controller){
     Stepper* *motor = controller->motorList;
     
-    // 在旋转模式并且StepTimer未启动时
-    if((controller->mode == MOTOR_NOTARGET) && (!controller->timerField.stepTimerRunning)){
-        TimerField_pulseTimerStop(&controller->timerField);
-        return;
-    }
+    if(controller->leadMotor == NULL) return;
 
     while((*motor) != NULL){
         Stepper_clearStepPin((*motor++));
     }
 
-    if(controller->timerField.lastPulse){
+    if(controller->changeDir){
+        motor = controller->motorList;
+        while((*motor) != NULL){
+            Stepper_toggleDir((*motor++));
+        }
+        controller->changeDir = 0;
+    }
+    controller->timerField.pulseTimer.setStatus(0);
+    if(controller->lastPulse){
+        int32_t pos = 0;
+#if defined (HAL_TIMER) && HAL_TIMER
+        controller->timerField.stepTimer.setStatus(0);
+        controller->timerField.pulseTimer.setStatus(0);
+        controller->timerField.accTimer.setStatus(0);
+        // printf("step stop\n");
+#else
         TimerField_end(&controller->timerField);
-        // TimerField_pulseTimerStop(&controller->timerField);
-        return;
+#endif
+        controller->lastPulse = 0;
+        pos = controller->leadMotor->current;
+        controller->leadMotor = NULL;
+
+        if(controller->mode != MOTOR_TARGET){
+            return;
+        }
+        // printf("motor stop\n");
+        if(!controller->reachedTargetCallback){
+            return;
+        }
+        controller->reachedTargetCallback((int32_t)pos);
     }
 }
 

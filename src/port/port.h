@@ -19,25 +19,27 @@
 #define LOW              0
 #endif
 
-
 #define FUN_IN_RAM
+#define ALLOCAT_PULSE_TIMER       0
 
 
-#include "air105_timer.h"
-#include "air105_gpio.h"
-#include "delay.h"
+
+
 
 #ifndef delay
-#define delay(ms)       Delay_ms(ms)
+#define delay(ms)       
 #endif
 
 #ifndef noInterrupts
-#define noInterrupts()             {}
+#define noInterrupts()             __disable_irq()
 #endif
 
 #ifndef interrupts
-#define interrupts()               {}
+#define interrupts()               __enable_irq()
 #endif
+
+/// TODO
+#define HAL_TIMER                 1
 
 
 typedef struct {
@@ -48,61 +50,85 @@ typedef struct {
 
 static inline void FUN_IN_RAM digitalPinOutputMode(gpio_pin_t pin){
     // TODO
-    GPIO_InitTypeDef gpio = { 0 };
-    
-    gpio.GPIO_Mode = GPIO_Mode_Out_PP;
-    gpio.GPIO_Pin = pin.pin;
-    gpio.GPIO_Remap = GPIO_Remap_1;
-    GPIO_Init((GPIO_TypeDef *)(pin.port), &gpio);
+
 }
 
 static inline void FUN_IN_RAM digitalWritePin(gpio_pin_t pin, uint8_t level){
     // TODO
-    uint32_t _pin = pin.pin;
-    ((GPIO_TypeDef*)pin.port)->BSRR = ((uint32_t)_pin) << ((!level) * 16);
+
 }
 
-// #include "TF_Handler.h"
 
-#define NO_TIMER             -1
-#define AUTO_TIMER           255
-#define MAX_TIMERS           7    /// 定义可用定时器单元数目          
+// #ifndef TIMER_UNIT
+// #define TIMER_UNIT()          {TIM2, TIM3, TIM4,TIM5}
+// #endif
 
-#ifndef TIMER_UNIT
-#define TIMER_UNIT()          {TIM_1, TIM_2, TIM_3,TIM_4, TIM_5, TIM_6, TIM_7}
+
+typedef TIM_TypeDef* TIM_Unit; /// 定义定时器单元
+
+#if defined (HAL_TIMER) && HAL_TIMER
+struct HardTimer_Type {
+    // volatile struct {
+    //     // uint32_t running : 1;
+    //     // uint32_t lastPulse : 1;
+    //     // uint32_t period : 16;
+    // };
+    // int32_t next_fequency;
+    // void *timer;
+    void (*const initialize)(void);
+    // void (*prepare)(void);
+    void (*const setStatus)(uint32_t);
+    // void (*start)(void);
+    // void (*stop)(void);
+    bool (*const isRunning)(void);
+    void (*const setFrequency)(uint32_t);
+    uint32_t (*const frequency)(void);
+    void (*const setPeriod)(uint32_t);
+    uint32_t (*const period)(void);
+};
 #endif
 
-#ifndef TIM_MODULE
-#define TIM_MODULE()          {TIMM0, TIMM0, TIMM0, TIMM0, TIMM0, TIMM0, TIMM0}
-#endif
-
-
-typedef TIM_NumTypeDef TIM_Unit; /// 定义定时器单元
-typedef TIM_Module_TypeDef TIM_Module;  /// 定义定时器模块
-
-typedef struct {
-    volatile bool stepTimerRunning;
-    volatile bool accTimerRunning;
-    volatile bool pulseTimerRunning;
-
-    volatile bool lastPulse;
+typedef struct TimerField_Def{
+#if defined (HAL_TIMER) && HAL_TIMER
+    struct HardTimer_Type stepTimer;
+    struct HardTimer_Type pulseTimer;
+    struct HardTimer_Type accTimer;
+#else
+    struct {
+        uint32_t stepTimerRunning : 1;
+        uint32_t accTimerRunning : 1;
+        uint32_t pulseTimerRunning : 1;
+        uint32_t lastPulse : 1;
+    };
 
     TIM_Unit stepTimer;
     TIM_Unit accTimer;
     TIM_Unit pulseTimer;
-
-    // TF_Handler *handler;
+#endif
 }TimerField;
 
 typedef struct {
+#if defined (HAL_TIMER) && HAL_TIMER
+    struct HardTimer_Type *stepTimer;
+    struct HardTimer_Type *pulseTimer;
+    struct HardTimer_Type *accTimer;
+#else
     TIM_Unit stepTimer;
     TIM_Unit accTimer;
     TIM_Unit pulseTimer;
+#endif
 }TimerField_InitTypeDef;
 
+#if defined (HAL_TIMER) && HAL_TIMER
+
+#else
+
 void TimerField_init(TimerField *_timerfield, const TimerField_InitTypeDef *config);
+
 bool TimerField_begin(TimerField* timerfield);
 void TimerField_end(TimerField* timerfield);
+
+
 
 void TimerField_stepTimerStart(TimerField* timerfield);   /// 需要强制更新
 void TimerField_stepTimerStop(TimerField* timerfield);
@@ -123,6 +149,6 @@ bool TimerField_pulseTimerIsRunning(const TimerField* timerfield);
 
 void FUN_IN_RAM TimerField_timerEndAfterPulse(TimerField *_timerfield);
 
-
+#endif
 
 #endif

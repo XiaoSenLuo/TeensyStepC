@@ -1,7 +1,7 @@
 
 
 #include "StepControlBase.h"
-#include "TimerField.h"
+#include "port/timer/wch/TimerField.h"
 
 
 
@@ -27,11 +27,27 @@ static void doMove(StepControl *_controller, int N, float speedOverride){
     uint32_t acceleration = (*(find_min_element(controller->motorList, controller->motorList + N, Stepper_cmpAcc)))->a; // use the lowest acceleration for the move
 
     uint32_t targetSpeed = labs((*(find_min_element(controller->motorList, controller->motorList + N, Stepper_cmpVmin)))->vMax) * speedOverride; // use the lowest max frequency for the move, scale by relSpeed
-
-    if ((controller->leadMotor->A == 0) || (targetSpeed == 0)) return;
-
+    
+    // printf("doMove targetSpeed: %ldHz, leadMotor->A = %ld\n", targetSpeed, controller->leadMotor->A);
+    if((controller->leadMotor->A == 0) || (targetSpeed == 0)) return;
+    
     // MOTOR_TARGET speed----
+#ifdef MATH_TYPE
+    {
+        _iq x = 0, relDist = 0;
+        _iq leadSpeed = 0;
+        leadSpeed = _IQ(labs(controller->leadMotor->vMax));
+        for(int i = 0; i < N; i++){
+            relDist = _IQdiv(_IQ(controller->motorList[i]->A), 
+                             _IQdiv(_IQmpy(_IQ(controller->leadMotor->A), 
+                             leadSpeed), 
+                             _IQ(labs(controller->motorList[i]->vMax))));
+            if(relDist > x) x = relDist;
+        }
+        targetSpeed = _IQint(_IQdiv(leadSpeed, x));
+    }
 
+#else
     float x = 0;
     float leadSpeed = labs(controller->leadMotor->vMax);
     for (int i = 0; i < N; i++)
@@ -41,22 +57,51 @@ static void doMove(StepControl *_controller, int N, float speedOverride){
         // Serial.printf("%d %f\n", i, relDist);
     }
     targetSpeed = leadSpeed / x;
+    controller->leadMotor->targetSpeed = targetSpeed;
+#endif
     //Serial.printf("\n%d\n",targetSpeed);
 
     // Start move--------------------------
-    TimerField_begin(&controller->timerField);
+    
     int32_t freq = Accelerator_prepareMovement(accelerator, controller->leadMotor->current, controller->leadMotor->target, targetSpeed, pullInSpeed, pullOutSpeed, acceleration);
-
+    
+    if(freq < 0){
+        if(!controller->errorCallback) return;
+        controller->errorCallback(controller->leadMotor, err_initialize_move);
+        return;
+    }
+    // printf("doMove: %ldHz\n", freq);
+    controller->lastPulse = 0;
+#if defined (HAL_TIMER) && HAL_TIMER
+    controller->timerField.stepTimer.setFrequency(freq);
+    controller->timerField.stepTimer.setStatus(1);
+    controller->timerField.pulseTimer.setStatus(1);
+    controller->timerField.accTimer.setStatus(1);
+#else
+    
+    TimerField_begin(&controller->timerField);
     TimerField_setStepFrequency(&controller->timerField, freq);
-
     TimerField_stepTimerStart(&controller->timerField);
     TimerField_accTimerStart(&controller->timerField);
+#endif
 }
 
 
 void StepControl_init(StepControl *controller, const StepControl_Init_TypeDef *config){
     // TODO
-    Controller_init(&controller->controller, config);
+#if defined (HAL_TIMER) && HAL_TIMER
+
+    // controller->controller.timerField.stepTimer = *config->timerConfig.stepTimer;
+    // controller->controller.timerField.accTimer = *config->timerConfig.accTimer;
+    // controller->controller.timerField.pulseTimer = *config->timerConfig.pulseTimer;
+
+    controller->controller.timerField.stepTimer.initialize();
+    controller->controller.timerField.pulseTimer.initialize();
+    controller->controller.timerField.accTimer.initialize();
+#else
+    TimerField_init(&controller->controller.timerField, &config->timerConfig);
+#endif
+    Controller_init(&controller->controller, &config->motorConfig);
     controller->controller.mode = MOTOR_TARGET;
 }
 
@@ -98,7 +143,15 @@ void StepControl_stopAsync(StepControl *_controller){
         controller->leadMotor->target = controller->leadMotor->current + controller->leadMotor->dir * newTarget;
 
         if(controller->leadMotor->target == controller->leadMotor->current){
+#if defined (HAL_TIMER) && HAL_TIMER
+            controller->timerField.stepTimer.setStatus(0);
+            controller->timerField.accTimer.setStatus(0);
+            controller->timerField.pulseTimer.setStatus(0);
+            controller->lastPulse = 0;
+#else
             TimerField_end(&controller->timerField);
+            controller->lastPulse = 0;
+#endif
         }
     }
     
@@ -110,7 +163,7 @@ void StepControl_move(StepControl *_controller, float speedOverride, uint8_t N, 
 
     StepControl_moveAsync(_controller, speedOverride, N, steppers);
 
-    while(TimerField_stepTimerIsRunning(&controller->timerField)){
+    while(Controller_isRunning(controller)){
         delay(1);
     }
 }
@@ -128,7 +181,7 @@ void vStepControl_move(StepControl *_controller, float speedOverride, uint8_t N,
 
     StepControl_moveAsync(_controller, speedOverride, N, stepperArr);
 
-    while(TimerField_stepTimerIsRunning(&controller->timerField)){
+    while(Controller_isRunning(controller)){
         delay(1);
     }
 }
@@ -137,7 +190,7 @@ void vStepControl_move(StepControl *_controller, float speedOverride, uint8_t N,
 void StepControl_stop(StepControl *_controller){
     MotorControlBase *controller = &_controller->controller;
 
-    StepControl_stop(_controller);
+    StepControl_stopAsync(_controller);
     while(Controller_isRunning(controller)){
         delay(1);
     }
@@ -145,21 +198,31 @@ void StepControl_stop(StepControl *_controller){
 
 
 void FUN_IN_RAM StepControl_accTimerISR(StepControl *_controller){
-    MotorControlBase *controller = &_controller->controller;
-    
-    LinStepAccelerator *accelerator = &_controller->accelerator;
-    
-    uint32_t speed = 0;
 
-    if(controller->timerField.lastPulse){
-        // TimerField_end(&controller->timerField);
+    if(_controller->controller.leadMotor == NULL) return;
+    
+    MotorControlBase *controller = &_controller->controller;
+    LinStepAccelerator *accelerator = &_controller->accelerator;
+
+    int32_t speed = 0;
+#if defined (HAL_TIMER) && HAL_TIMER
+    if(controller->lastPulse){
+        controller->timerField.accTimer.setStatus(0);
+        return;
+    }else{
+        speed = Accelerator_updateSpeed(accelerator, controller->leadMotor->current);
+        // printf("%ld\n", speed);
+        controller->timerField.stepTimer.setFrequency(speed);
+    }
+#else
+    if(controller->lastPulse){
         TimerField_accTimerStop(&controller->timerField);
         return;
-    }
-
-    if(Controller_isRunning(controller)){
+    }else{
         speed = Accelerator_updateSpeed(accelerator, controller->leadMotor->current);
+        // printf("%ld\n", speed);
         TimerField_setStepFrequency(&controller->timerField, speed);
     }
+#endif
 }
 

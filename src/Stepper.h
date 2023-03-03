@@ -10,18 +10,20 @@
 
 typedef uint8_t StepperParamBase;
 
-typedef struct {
-    volatile bool dostep;
-    volatile uint8_t polarity;
-    volatile uint8_t reverse;
-    
+typedef struct Stepper_Def{
+    struct {
+        int32_t dostep : 2;
+        int32_t polarity : 2;
+        int32_t reverse : 2;
+        int32_t targetPosLimit : 2;
+        int32_t targetNegLimit : 2;
+        int32_t dir : 2;
+    };
+
     volatile int32_t current;
     volatile int32_t currentSpeed;
+    volatile int32_t targetSpeed;
     volatile int32_t target;
-    const int32_t targetPosLimit;
-    const int32_t targetNegLimit;
-
-    int32_t dir;
 
     int32_t A, B; // Bresenham paramters
     int32_t vMax;
@@ -57,19 +59,34 @@ void Stepper_setTargetRel(Stepper* stepper, int32_t delta); // Set MOTOR_TARGET 
 static inline int32_t Stepper_getPosition(Stepper* stepper) { return stepper->current; }
 static inline void Stepper_setPosition(Stepper* stepper, int32_t pos) { stepper->current = pos; }
 
+static inline void Stepper_setPosLimit(Stepper *stepper){
+    stepper->targetPosLimit = 1;
+}
+
+static inline void Stepper_clearPosLimit(Stepper *stepper){
+    stepper->targetPosLimit = 0;
+}
+
+static inline void Stepper_setNegLimit(Stepper *stepper){
+    stepper->targetNegLimit = 1;
+}
+
+static inline void Stepper_clearNegLimit(Stepper *stepper){
+    stepper->targetNegLimit = 0;
+}
+
 /***************************  HardWare Pin  ****************************/
 
 
 static inline void FUN_IN_RAM Stepper_doStep(Stepper* stepper){
-	
     digitalWritePin(stepper->stepPin, stepper->polarity);
-    stepper->dostep = true;
+    stepper->dostep = 1;
     stepper->current += stepper->dir;
 }
 
 static inline void FUN_IN_RAM Stepper_clearStepPin(Stepper* stepper){
     digitalWritePin(stepper->stepPin, !stepper->polarity);
-    stepper->dostep = false;
+    stepper->dostep = 0;
 }
 
 static inline bool FUN_IN_RAM Stepper_isClearStepPin(Stepper *stepper){

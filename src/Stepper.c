@@ -22,6 +22,10 @@ Stepper* Stepper_init(Stepper *stepper, const Stepper_InitTypeDef *config){
     digitalPinOutputMode(stepper->dirPin);
     
 	stepper->current = 0;
+    stepper->currentSpeed = 0;
+    stepper->targetSpeed = 0;
+    
+    Stepper_setDir(stepper, 1);
     Stepper_setStepPinPolarity(stepper, HIGH);
     Stepper_setInverseRotation(stepper, false);
     Stepper_setAcceleration(stepper, aDefault);
@@ -33,7 +37,7 @@ Stepper* Stepper_init(Stepper *stepper, const Stepper_InitTypeDef *config){
 
 Stepper* Stepper_setMaxSpeed(Stepper* stepper, int32_t speed){  // steps/s
     Stepper_setDir(stepper, (speed >= 0 ? 1 : -1));
-    stepper->vMax = min(vMaxMax, max(-vMaxMax, speed));
+    stepper->vMax = min(vMaxMax, labs(speed));
     
     return stepper;
 }
@@ -42,6 +46,7 @@ Stepper* Stepper_setPullInSpeed(Stepper* stepper, int32_t speed){  // steps/s
     stepper->vPullIn = stepper->vPullOut = labs(speed);
     return stepper;
 }
+
 Stepper* Stepper_setPullInOutSpeed(Stepper* stepper, int32_t pullInSpeed, int32_t pullOutSpeed){  // steps/s
     
     stepper->vPullIn = labs(pullInSpeed);
@@ -56,7 +61,6 @@ Stepper* Stepper_setAcceleration(Stepper* stepper, uint32_t _a){  // steps/s^2
 Stepper* Stepper_setStepPinPolarity(Stepper* stepper, int p){  // HIGH -> positive pulses, LOW -> negative pulses
     stepper->polarity = p;
     Stepper_clearStepPin(stepper);
-
     return stepper;
 }
 
@@ -66,7 +70,6 @@ Stepper* Stepper_setInverseRotation(Stepper* stepper, bool b){  // Change polari
 }
 
 void Stepper_setTargetAbs(Stepper* stepper, int32_t pos){   // Set MOTOR_TARGET position absolute
-    
     Stepper_setTargetRel(stepper, pos - stepper->current);
 }
 void Stepper_setTargetRel(Stepper* stepper, int32_t delta){   // Set MOTOR_TARGET position relative to current position
