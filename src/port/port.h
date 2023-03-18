@@ -22,12 +22,18 @@
 #define FUN_IN_RAM
 #define ALLOCAT_PULSE_TIMER       0
 
+#ifdef MATH_TYPE
+#include "IQmath_RV32.h"
+#endif
 
 
+#include "ch32v20x_gpio.h"
+#include "ch32v20x_tim.h"
+#include "core_riscv.h"
 
 
 #ifndef delay
-#define delay(ms)       
+#define delay(ms)       Delay_Ms(ms)
 #endif
 
 #ifndef noInterrupts
@@ -50,12 +56,21 @@ typedef struct {
 
 static inline void FUN_IN_RAM digitalPinOutputMode(gpio_pin_t pin){
     // TODO
+    GPIO_InitTypeDef GPIO_InitStructure = {0};
 
+    GPIO_InitStructure.GPIO_Pin = pin.pin;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_2MHz;
+    GPIO_Init((GPIO_TypeDef *)(pin.port), &GPIO_InitStructure);
 }
 
 static inline void FUN_IN_RAM digitalWritePin(gpio_pin_t pin, uint8_t level){
     // TODO
-
+    if(level){
+        ((GPIO_TypeDef *)(pin.port))->BSHR = pin.pin;
+    }else{
+        ((GPIO_TypeDef *)(pin.port))->BCR = pin.pin;
+    }
 }
 
 

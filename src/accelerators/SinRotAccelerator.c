@@ -85,13 +85,15 @@ static int64_t int64_sqrt_bv(int64_t x){
 
 static inline float sqrtf_0x5f3759df(float x){
     long i = 0;
-    float f = 0.0f;
+    long *l = NULL;
+    float *f = NULL;
     float xhalf = 0.5f * x;
-    i = 0x5f3759df - ((*(long *)&x) >> 1);
-    f = *(float *)&i;
-    // f *= 1.5f - xhalf * f * f;
-    // f *= 1.5f - xhalf * f * f;
-    return xhalf * f + 0.5f / f;
+    l = (long *)&x;
+    i = 0x5f3759df - ((*l) >> 1);
+    f = (float *)&i;
+    // *f *= 1.5f - xhalf * (*f) * (*f);
+    // *f *= 1.5f - xhalf * (*f) * (*f);
+    return xhalf * (*f) + 0.5f / (*f);
 }
 
 
