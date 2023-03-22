@@ -43,26 +43,29 @@ typedef enum {
 typedef void (*ErrFunc)(Stepper*, int);
 typedef void (*CallbackFunc)(int32_t);
 
-typedef struct MotorControlBase_Def{
-    volatile struct {
-        int32_t OK : 2;
-        int32_t mCnt : 8;
-        int32_t mode : 2;
-        int32_t changeDir : 2;
-        int32_t lastPulse : 2;
+struct MotorControlBaseDef{
+    struct {
+        const uint8_t id;
+        uint8_t mCnt;
+        uint16_t OK : 2;
+        uint16_t mode : 2;
+        uint16_t changeDir : 2;
+        uint16_t lastPulse : 2;
+        uint16_t updateStepTimer : 2;
     };
-
     uint32_t accUpdatePeriod;
     uint32_t pulseWidth;
-
-    TimerField timerField;
-
-    Stepper* motorList[MAXMOTORS + 1];
-    Stepper* leadMotor;
+    int32_t stepFrequency;
 
     CallbackFunc reachedTargetCallback;
     ErrFunc errorCallback;
-}MotorControlBase;
+
+    Stepper* leadMotor;
+    Stepper* motorList[MAXMOTORS + 1];
+
+    TimerField timerField;
+};
+typedef struct MotorControlBaseDef MotorControlBase;
 
 
 typedef struct {
@@ -84,6 +87,10 @@ typedef struct {
 static inline bool Controller_isOK(const MotorControlBase * controller){
 
     return controller->OK;
+}
+
+static inline int32_t Controller_id(const MotorControlBase * controller){
+    return (int32_t)controller->id;
 }
 
 MotorControlBase* Controller_init(MotorControlBase* controller, const MotorControlBase_Init_TypeDef *config);
@@ -128,8 +135,6 @@ void Controller_attachStepper(MotorControlBase *controller, uint8_t N, Stepper* 
 void vController_attachStepper(MotorControlBase *controller, uint8_t N, ...);
 
 void vvController_attachStepper(MotorControlBase *controller, uint8_t N, __builtin_va_list va);
-
-
 
 void FUN_IN_RAM stepTimerISR(MotorControlBase *controller);
 

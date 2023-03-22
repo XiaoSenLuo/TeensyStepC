@@ -10,10 +10,12 @@ typedef struct {
     TimerField_InitTypeDef timerConfig;
 }StepControl_Init_TypeDef;
 
-typedef struct {
+struct StepControlDef{
     MotorControlBase controller;
     LinStepAccelerator accelerator;
-}StepControl;
+};
+
+typedef struct StepControlDef StepControl;
 
 
 void StepControl_init(StepControl *controller, const StepControl_Init_TypeDef *config);

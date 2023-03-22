@@ -79,6 +79,7 @@ void FUN_IN_RAM stepTimerISR(MotorControlBase *controller){
     if(controller->leadMotor == NULL) return;
     
     if(Stepper_isClearStepPin(controller->leadMotor) == false) return;
+
     Stepper_doStep(controller->leadMotor);  /// leadMotor=MotorList[0]
     Stepper* *slave = controller->motorList;
     
@@ -90,14 +91,13 @@ void FUN_IN_RAM stepTimerISR(MotorControlBase *controller){
         }
         (*slave)->B += (*slave)->A;
     }
-    
+
     controller->timerField.pulseTimer.setStatus(1);
 #if(ALLOCAT_PULSE_TIMER)
     TimerField_triggerDelay(&controller->timerField);  // start delay line to dactivate all step pins
 #endif
     // stop timer and call callback if we reached MOTOR_TARGET
-    if((controller->mode == MOTOR_TARGET) && 
-       (controller->leadMotor->current == controller->leadMotor->target)){
+    if((controller->leadMotor->current == controller->leadMotor->target) && (controller->mode == MOTOR_TARGET)){
 #if(ALLOCAT_PULSE_TIMER)
         TimerField_stepTimerStop(&controller->timerField);
 #endif
@@ -113,6 +113,14 @@ void FUN_IN_RAM stepTimerISR(MotorControlBase *controller){
         // if(!controller->reachedTargetCallback) return;
         // controller->reachedTargetCallback((int32_t)controller->leadMotor->current);
     }
+#if(1)
+    else{
+        if(controller->updateStepTimer){
+            controller->timerField.stepTimer.setFrequency(controller->stepFrequency);
+            controller->updateStepTimer = 0;
+        }
+    }
+#endif
 }
 
 
@@ -144,6 +152,7 @@ void FUN_IN_RAM pulseTimerISR(MotorControlBase *controller){
         TimerField_end(&controller->timerField);
 #endif
         controller->lastPulse = 0;
+        controller->updateStepTimer = 0;
         pos = controller->leadMotor->current;
         controller->leadMotor = NULL;
 

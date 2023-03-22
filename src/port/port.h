@@ -64,7 +64,8 @@ static inline void FUN_IN_RAM digitalPinOutputMode(gpio_pin_t pin){
     GPIO_Init((GPIO_TypeDef *)(pin.port), &GPIO_InitStructure);
 }
 
-static inline void FUN_IN_RAM digitalWritePin(gpio_pin_t pin, uint8_t level){
+
+static __always_inline void FUN_IN_RAM digitalWritePin(gpio_pin_t pin, uint8_t level){
     // TODO
     if(level){
         ((GPIO_TypeDef *)(pin.port))->BSHR = pin.pin;
@@ -103,7 +104,7 @@ struct HardTimer_Type {
 };
 #endif
 
-typedef struct TimerField_Def{
+struct TimerFieldDef{
 #if defined (HAL_TIMER) && HAL_TIMER
     struct HardTimer_Type stepTimer;
     struct HardTimer_Type pulseTimer;
@@ -120,7 +121,9 @@ typedef struct TimerField_Def{
     TIM_Unit accTimer;
     TIM_Unit pulseTimer;
 #endif
-}TimerField;
+};
+
+typedef struct TimerFieldDef TimerField;
 
 typedef struct {
 #if defined (HAL_TIMER) && HAL_TIMER

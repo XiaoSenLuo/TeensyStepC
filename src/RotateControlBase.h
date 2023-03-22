@@ -24,7 +24,7 @@ typedef struct {
 #define LINE_ACCELERATOR           0
 #define SIN_ACCELERATOR            1
 
-typedef struct {
+struct RotateControlDef{
     struct  {
         uint32_t stop : 1;
         uint32_t acc : 3;
@@ -33,8 +33,9 @@ typedef struct {
     MotorControlBase controller;
     LinRotAccelerator accelerator;
     SinRotAccelerator sinRotAccelerator;
-}RotateControl;
+};
 
+typedef struct RotateControlDef RotateControl;
 
 void RotateControl_init(RotateControl *controller, const RotateControl_Init_TypeDef *config);
 

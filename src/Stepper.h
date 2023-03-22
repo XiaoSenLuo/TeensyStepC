@@ -10,7 +10,7 @@
 
 typedef uint8_t StepperParamBase;
 
-typedef struct Stepper_Def{
+struct StepperDef{
     struct {
         int32_t dostep : 2;
         int32_t polarity : 2;
@@ -32,7 +32,9 @@ typedef struct Stepper_Def{
 
     gpio_pin_t stepPin;
     gpio_pin_t dirPin;
-}Stepper;
+};
+
+typedef struct StepperDef Stepper;
 
 typedef struct {
     // int32_t vMaxMax;
@@ -78,24 +80,24 @@ static inline void Stepper_clearNegLimit(Stepper *stepper){
 /***************************  HardWare Pin  ****************************/
 
 
-static inline void FUN_IN_RAM Stepper_doStep(Stepper* stepper){
+static __always_inline void FUN_IN_RAM Stepper_doStep(Stepper* stepper){
     digitalWritePin(stepper->stepPin, stepper->polarity);
     stepper->dostep = 1;
     stepper->current += stepper->dir;
 }
 
-static inline void FUN_IN_RAM Stepper_clearStepPin(Stepper* stepper){
+static __always_inline void FUN_IN_RAM Stepper_clearStepPin(Stepper* stepper){
     digitalWritePin(stepper->stepPin, !stepper->polarity);
     stepper->dostep = 0;
 }
 
-static inline bool FUN_IN_RAM Stepper_isClearStepPin(Stepper *stepper){
+static __always_inline bool FUN_IN_RAM Stepper_isClearStepPin(Stepper *stepper){
     return !stepper->dostep;
 }
 
-static inline void FUN_IN_RAM Stepper_setDir(Stepper* stepper, int d){
+static __always_inline void FUN_IN_RAM Stepper_setDir(Stepper* stepper, int d){
     stepper->dir = d;
-    digitalWritePin(stepper->dirPin, (stepper->dir == 1) ? stepper->reverse : !stepper->reverse);
+    digitalWritePin(stepper->dirPin, ((stepper->dir == 1) != 0) == stepper->reverse);
 }
 
 static inline void FUN_IN_RAM Stepper_toggleDir(Stepper* stepper){

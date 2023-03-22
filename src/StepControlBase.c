@@ -204,15 +204,26 @@ void FUN_IN_RAM StepControl_accTimerISR(StepControl *_controller){
     MotorControlBase *controller = &_controller->controller;
     LinStepAccelerator *accelerator = &_controller->accelerator;
 
-    int32_t speed = 0;
+    int32_t speed = 0, current = 0;
 #if defined (HAL_TIMER) && HAL_TIMER
     if(controller->lastPulse){
         controller->timerField.accTimer.setStatus(0);
         return;
     }else{
-        speed = Accelerator_updateSpeed(accelerator, controller->leadMotor->current);
+        noInterrupts();
+        current = controller->leadMotor->current;
+        interrupts();
+        speed = Accelerator_updateSpeed(accelerator, current);
         // printf("%ld\n", speed);
+#if(0)
         controller->timerField.stepTimer.setFrequency(speed);
+#else
+        noInterrupts();
+        controller->stepFrequency = speed;
+        controller->updateStepTimer = 1;
+        interrupts();
+#endif
+
     }
 #else
     if(controller->lastPulse){
