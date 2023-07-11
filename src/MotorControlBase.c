@@ -113,14 +113,6 @@ void FUN_IN_RAM stepTimerISR(MotorControlBase *controller){
         // if(!controller->reachedTargetCallback) return;
         // controller->reachedTargetCallback((int32_t)controller->leadMotor->current);
     }
-#if(1)
-    else{
-        if(controller->updateStepTimer){
-            controller->timerField.stepTimer.setFrequency(controller->stepFrequency);
-            controller->updateStepTimer = 0;
-        }
-    }
-#endif
 }
 
 
@@ -165,6 +157,14 @@ void FUN_IN_RAM pulseTimerISR(MotorControlBase *controller){
         }
         controller->reachedTargetCallback((int32_t)pos);
     }
+#if(1)
+    else{
+        if(controller->updateStepTimer){
+            controller->timerField.stepTimer.setFrequency(controller->stepFrequency);
+            controller->updateStepTimer = 0;
+        }
+    }
+#endif
 }
 
 
